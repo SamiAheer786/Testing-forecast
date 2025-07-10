@@ -23,7 +23,7 @@ if uploaded_file:
     df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
 
     st.success("✅ File uploaded successfully!")
-    if st.checkbox("👁️ Show Data Head"):
+    if st.checkbox("👁️ Show Data "):
         st.dataframe(df_raw.head())
 
     date_col = st.selectbox("📅 Select Date Column", df_raw.select_dtypes(include=["object", "datetime"]).columns)
@@ -57,7 +57,7 @@ if uploaded_file:
         forecast_until = 'custom'
         custom_days = st.number_input("Enter custom number of days", min_value=1, value=30)
 
-    st.markdown("### 📅 Special Events or Seasonal Days")
+    st.markdown("### 📅 Any Special Events or Seasonal Days")
     include_events = st.radio("Include Special Event Dates?", ["No", "Yes"], horizontal=True)
     event_dates = []
     if include_events == "Yes":
@@ -109,4 +109,4 @@ if uploaded_file:
             st.subheader("📋 Daily Forecast Table")
             st.dataframe(generate_daily_table(st.session_state.forecast_df))
 else:
-    st.info("👋 Upload a sales data file to begin.")
+    st.info(" Upload data file to begin.")
