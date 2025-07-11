@@ -1,11 +1,11 @@
 import pandas as pd
-from prophet import Prophet
 from datetime import datetime, timedelta
+from prophet import Prophet
+import plotly.graph_objects as go
+import plotly.express as px
 from numpy import polyfit
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from calendar import monthrange
-import plotly.graph_objects as go
-import plotly.express as px
 
 def preprocess_data(df, date_col, target_col, filters=[]):
     df = df[[date_col, target_col] + filters].copy()
@@ -52,8 +52,11 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
         forecast_vals = model.forecast(forecast_days)
         forecast = pd.DataFrame({'ds': future_dates, 'yhat': forecast_vals})
 
-    forecast_full = pd.concat([df_grouped[['ds', 'y']].rename(columns={'y': 'yhat'}), forecast], ignore_index=True)
-    forecast_full = forecast_full.sort_values('ds')
+    forecast_full = pd.concat([
+        df_grouped[['ds', 'y']].rename(columns={'y': 'yhat'}),
+        forecast
+    ], ignore_index=True).sort_values('ds')
+
     forecast_full['yhat_lower'] = forecast_full['yhat'] * 0.95
     forecast_full['yhat_upper'] = forecast_full['yhat'] * 1.05
 
@@ -64,31 +67,40 @@ def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_en
     df.columns = df.columns.str.lower()
 
     if 'region' not in df.columns or 'date' not in df.columns or 'target' not in df.columns:
-        return pd.DataFrame(columns=['Region', 'Forecasted Volume'])
+        return pd.DataFrame(columns=['Region', 'Forecasted_Volume'])
 
     regions = df['region'].dropna().unique()
     region_forecasts = []
 
     for region in regions:
-        region_df = df[df['region'] == region].copy()
+        region_df = df[df['region'] == region]
         if region_df.empty:
             continue
         forecast, _, _, _ = forecast_sales(region_df, model_type, 'Yearly', event_dates, forecast_until, custom_days)
         if not forecast.empty:
             total = forecast['yhat'].sum()
-            region_forecasts.append({'Region': region, 'Forecasted Volume': round(total, 2)})
+            region_forecasts.append({'Region': region, 'Forecasted_Volume': round(total, 2)})
 
     df_out = pd.DataFrame(region_forecasts)
-
-    if 'Forecasted Volume' in df_out.columns and not df_out.empty:
-        return df_out.sort_values(by="Forecasted Volume", ascending=False)
+    if not df_out.empty and 'Forecasted_Volume' in df_out.columns:
+        return df_out.sort_values(by="Forecasted_Volume", ascending=False)
     return df_out
 
 def plot_region_contribution_pie(df):
-    if 'Region' in df.columns and 'Forecasted Volume' in df.columns:
-        fig = px.pie(df, names='Region', values='Forecasted Volume', title='📊 Region-wise Forecasted Contribution')
+    if 'Region' in df.columns and 'Forecasted_Volume' in df.columns and not df.empty:
+        fig = px.pie(df, names='Region', values='Forecasted_Volume', title='📊 Region-wise Forecasted Contribution')
         return fig
     return go.Figure()
+
+def detect_pattern(df_grouped):
+    df_grouped['rolling_mean'] = df_grouped['y'].rolling(window=7).mean()
+    slope = polyfit(range(len(df_grouped['rolling_mean'].dropna())), df_grouped['rolling_mean'].dropna(), 1)[0]
+    if abs(slope) < 1e-2:
+        return "↔️ Stationary or flat trend"
+    elif slope > 0:
+        return "📈 Upward trend detected"
+    else:
+        return "📉 Downward trend detected"
 
 def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     if mode == 'Monthly':
@@ -118,16 +130,6 @@ def generate_recommendations(metrics):
     if metrics["🎯 Projected % of Target"] >= 100:
         return "✅ You're on track or exceeding your goal!"
     return f"⚠️ You need to sell {metrics['📈 Required Per Day']} units/day for {metrics['📅 Days Left to Forecast']} days."
-
-def detect_pattern(df_grouped):
-    df_grouped['rolling_mean'] = df_grouped['yhat'].rolling(window=7).mean()
-    slope = polyfit(range(len(df_grouped['rolling_mean'].dropna())), df_grouped['rolling_mean'].dropna(), 1)[0]
-    if abs(slope) < 1e-2:
-        return "↔️ Stationary or flat trend"
-    elif slope > 0:
-        return "📈 Upward trend detected"
-    else:
-        return "📉 Downward trend detected"
 
 def plot_forecast(df):
     fig = go.Figure()
