@@ -30,7 +30,7 @@ if uploaded_file:
 
     date_col = st.selectbox("📅 Select Date Column", df_raw.select_dtypes(include=["object", "datetime"]).columns)
     target_col = st.selectbox("🎯 Select Sales/Quantity Column", df_raw.select_dtypes("number").columns)
-    filters = st.multiselect("🧩 Select Filter Columns (e.g., Region/Product)", [col for col in df_raw.columns if col not in [date_col, target_col]])
+    filters = st.multiselect("🧩 Select Filter Columns (Optional)", [col for col in df_raw.columns if col not in [date_col, target_col]])
 
     df_clean = preprocess_data(df_raw, date_col, target_col, filters)
     st.session_state.df_clean = df_clean
@@ -105,30 +105,17 @@ if uploaded_file:
             st.subheader("📋 Daily Forecast Table")
             st.dataframe(generate_daily_table(st.session_state.forecast_df))
 
-            # Region-wise summary section
-            if 'region' in st.session_state.df_raw.columns:
-                show_region_wise = st.checkbox("📍 Show Region-wise Forecast Summary")
-                if show_region_wise:
-                    try:
-                        df_region_clean = preprocess_data(
-                            st.session_state.df_raw, date_col, target_col, ['region']
-                        )
-
-                        region_forecast_df = forecast_by_region(
-                            df_region_clean,
-                            model_choice,
-                            event_dates=event_dates,
-                            forecast_until=forecast_until,
-                            custom_days=custom_days
-                        )
-
-                        if not region_forecast_df.empty:
-                            st.subheader("🌍 Region-wise Forecast Summary")
-                            st.dataframe(region_forecast_df)
-                            st.plotly_chart(plot_region_contribution_pie(region_forecast_df), use_container_width=True)
-                        else:
-                            st.warning("⚠️ Could not generate region forecast.")
-                    except Exception as e:
-                        st.error(f"❌ Region-wise forecast failed: {str(e)}")
+            # Region-wise summary
+            if 'region' in df_raw.columns:
+                show_region_summary = st.checkbox("📍 Show Region-wise Forecast Summary")
+                if show_region_summary:
+                    df_region = preprocess_data(df_raw, date_col, target_col, ['region'])
+                    region_df = forecast_by_region(df_region, model_choice, event_dates, forecast_until, custom_days)
+                    if not region_df.empty:
+                        st.subheader("🌍 Region-wise Forecast Summary")
+                        st.dataframe(region_df)
+                        st.plotly_chart(plot_region_contribution_pie(region_df), use_container_width=True)
+                    else:
+                        st.warning("⚠️ No region data found to generate forecast.")
 else:
     st.info("📂 Upload data file to begin.")
