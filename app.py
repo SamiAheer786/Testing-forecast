@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 from forecast_utils import (
-    preprocess_data, forecast_sales,
-    calculate_target_analysis, generate_recommendations,
-    plot_forecast, plot_actual_vs_forecast,
-    plot_daily_bar_chart, generate_daily_table,
-    get_forecast_explanation, detect_pattern
+    preprocess_data, forecast_sales, calculate_target_analysis,
+    generate_recommendations, plot_forecast, plot_actual_vs_forecast,
+    plot_daily_bar_chart, generate_daily_table, get_forecast_explanation,
+    detect_pattern, forecast_by_region, plot_region_contribution_pie
 )
 
 st.set_page_config(page_title="📊 Smart Sales Forecast App", layout="wide")
@@ -23,7 +22,7 @@ if uploaded_file:
     df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
 
     st.success("✅ File uploaded successfully!")
-    if st.checkbox("👁️ Show Data "):
+    if st.checkbox("👁️ Show Data"):
         st.dataframe(df_raw.head())
 
     date_col = st.selectbox("📅 Select Date Column", df_raw.select_dtypes(include=["object", "datetime"]).columns)
@@ -71,14 +70,16 @@ if uploaded_file:
         if forecast_df.empty:
             st.warning("⚠️ Not enough data or no remaining days to forecast.")
         else:
-            st.session_state.forecast_df = forecast_df
-            st.session_state.df_clean = df_clean
-            st.session_state.full_forecast_df = full_df
-            st.session_state.last_data_date = last_data_date
-            st.session_state.target_value = target_value
-            st.session_state.target_mode = target_mode
-            st.session_state.forecast_ran = True
-            st.session_state.show_charts = False
+            st.session_state.update({
+                'forecast_df': forecast_df,
+                'df_clean': df_clean,
+                'full_forecast_df': full_df,
+                'last_data_date': last_data_date,
+                'target_value': target_value,
+                'target_mode': target_mode,
+                'forecast_ran': True,
+                'show_charts': False
+            })
 
     if st.session_state.forecast_ran:
         st.subheader("📌 Target Analysis")
@@ -108,5 +109,23 @@ if uploaded_file:
 
             st.subheader("📋 Daily Forecast Table")
             st.dataframe(generate_daily_table(st.session_state.forecast_df))
+
+            # Region-wise checkbox
+            if 'region' in st.session_state.df_clean.columns:
+                show_region_wise = st.checkbox("📍 Show Region-wise Forecast Summary")
+                if show_region_wise:
+                    region_forecast_df = forecast_by_region(
+                        st.session_state.df_clean,
+                        model_choice,
+                        event_dates=event_dates,
+                        forecast_until=forecast_until,
+                        custom_days=custom_days
+                    )
+                    if not region_forecast_df.empty:
+                        st.dataframe(region_forecast_df)
+                        st.plotly_chart(plot_region_contribution_pie(region_forecast_df), use_container_width=True)
+                    else:
+                        st.warning("⚠️ Region forecast not available.")
+
 else:
-    st.info(" Upload data file to begin.")
+    st.info("📂 Upload data file to begin.")
