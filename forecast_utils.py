@@ -1,5 +1,3 @@
-# Save this as forecast_utils.py
-
 import pandas as pd
 from datetime import datetime, timedelta
 from prophet import Prophet
@@ -21,10 +19,9 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
     df_grouped = df.groupby("date")["target"].sum().reset_index()
     df_grouped.columns = ['ds', 'y']
     df_grouped = df_grouped.sort_values("ds")
-
     last_data_date = pd.to_datetime(df_grouped['ds'].max())
 
-    # Determine forecast end date
+    # Forecast range
     if forecast_until == 'month_end':
         year, month = last_data_date.year, last_data_date.month
         end_date = datetime(year, month, monthrange(year, month)[1])
@@ -41,7 +38,7 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
     if forecast_days <= 0:
         return pd.DataFrame(), last_data_date, 0, df_grouped
 
-    # Prophet Model
+    # Forecast logic
     if model_type == "Prophet":
         df_grouped['y'] = df_grouped['y'].rolling(window=3, min_periods=1).mean()
         cap = df_grouped['y'].max() * 1.05
@@ -94,15 +91,24 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
 
     return forecast, last_data_date, forecast_days, forecast_full
 
-def detect_pattern(df_grouped):
-    df_grouped['rolling_mean'] = df_grouped['y'].rolling(window=7).mean()
-    slope = polyfit(range(len(df_grouped['rolling_mean'].dropna())), df_grouped['rolling_mean'].dropna(), 1)[0]
-    if abs(slope) < 1e-2:
-        return "↔️ Stationary or flat trend"
-    elif slope > 0:
-        return "📈 Upward trend detected"
-    else:
-        return "📉 Downward trend detected"
+def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_end', custom_days=None):
+    if 'region' not in df.columns:
+        return pd.DataFrame()
+
+    regions = df['region'].dropna().unique()
+    region_forecasts = []
+
+    for region in regions:
+        region_df = df[df['region'] == region]
+        forecast, _, _, _ = forecast_sales(
+            region_df, model_type, target_mode='Yearly', event_dates=event_dates,
+            forecast_until=forecast_until, custom_days=custom_days
+        )
+        if not forecast.empty:
+            total_forecast = forecast['yhat'].sum()
+            region_forecasts.append({'Region': region, 'Forecasted Volume': total_forecast})
+
+    return pd.DataFrame(region_forecasts).sort_values(by='Forecasted Volume', ascending=False)
 
 def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     if mode == 'Monthly':
@@ -133,6 +139,16 @@ def generate_recommendations(metrics):
         return "✅ You're on track or exceeding your goal!"
     return f"⚠️ You need to sell {metrics['📈 Required Per Day']} units/day for {metrics['📅 Days Left to Forecast']} days."
 
+def detect_pattern(df_grouped):
+    df_grouped['rolling_mean'] = df_grouped['y'].rolling(window=7).mean()
+    slope = polyfit(range(len(df_grouped['rolling_mean'].dropna())), df_grouped['rolling_mean'].dropna(), 1)[0]
+    if abs(slope) < 1e-2:
+        return "↔️ Stationary or flat trend"
+    elif slope > 0:
+        return "📈 Upward trend detected"
+    else:
+        return "📉 Downward trend detected"
+
 def plot_forecast(df):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat'], name='Forecast'))
@@ -156,13 +172,17 @@ def plot_daily_bar_chart(df):
     fig = px.bar(daily, x='date', y='target', title="📊 Daily Sales Trend")
     return fig
 
+def plot_region_contribution_pie(region_forecast_df):
+    fig = px.pie(region_forecast_df, names='Region', values='Forecasted Volume',
+                 title="🧩 Region-wise Contribution to Forecasted Volume", hole=0.4)
+    return fig
+
 def generate_daily_table(forecast_df):
     return forecast_df[['ds', 'yhat']].rename(columns={'ds': 'Date', 'yhat': 'Forecasted Sales'}).round(2)
 
 def get_forecast_explanation(method):
-    explanations = {
+    return {
         "Prophet": "Prophet models trends and special events to forecast future sales.",
         "Linear": "Linear regression fits a simple trend line based on past values.",
         "Exponential": "Exponential smoothing weighs recent values more heavily."
-    }
-    return explanations.get(method, "No explanation available.")
+    }.get(method, "No explanation available.")
