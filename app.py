@@ -10,11 +10,13 @@ from forecast_utils import (
 st.set_page_config(page_title="📊 Smart Sales Forecast App", layout="wide")
 st.title("📊 Smart Sales Forecast & Target Tracker - H I C O")
 
+# Session state init
 if 'forecast_ran' not in st.session_state:
     st.session_state.forecast_ran = False
 if 'show_charts' not in st.session_state:
     st.session_state.show_charts = False
 
+# Upload
 uploaded_file = st.file_uploader("📤 Upload Sales File (CSV or Excel)", type=["csv", "xlsx"])
 
 if uploaded_file:
@@ -25,18 +27,14 @@ if uploaded_file:
     if st.checkbox("👁️ Show Data"):
         st.dataframe(df_raw.head())
 
+    # Column selections
     date_col = st.selectbox("📅 Select Date Column", df_raw.select_dtypes(include=["object", "datetime"]).columns)
     target_col = st.selectbox("🎯 Select Sales/Quantity Column", df_raw.select_dtypes("number").columns)
-    filters = st.multiselect("🧩 Select Filter Columns (e.g., Region/Product)", [col for col in df_raw.columns if col not in [date_col, target_col]])
+    filters = st.multiselect("🧩 Optional Filter Columns (e.g., Region/Product)", [col for col in df_raw.columns if col not in [date_col, target_col]])
 
     df_clean = preprocess_data(df_raw, date_col, target_col, filters)
 
-    if filters:
-        selected_filter = st.selectbox("📍 Filter By", filters)
-        selected_value = st.selectbox("🔎 Select Value", sorted(df_clean[selected_filter].dropna().unique()))
-        df_clean = df_clean[df_clean[selected_filter] == selected_value]
-        st.info(f"Showing forecast for **{selected_filter} = {selected_value}**")
-
+    # Forecast method + target
     st.markdown("## 🧠 Select Forecasting Method")
     model_choice = st.radio("Choose a method", ["Prophet", "Linear", "Exponential"])
     st.caption(f"ℹ️ {get_forecast_explanation(model_choice)}")
@@ -44,6 +42,7 @@ if uploaded_file:
     target_mode = st.radio("🎯 Target Period", ["Monthly", "Yearly"], horizontal=True)
     target_value = st.number_input("📌 Enter Your Sales Target", step=1000)
 
+    # Forecast horizon
     st.markdown("## ⏳ Select Forecast Horizon")
     forecast_range = st.selectbox("How far do you want to forecast?", ["Till Month End", "Till Quarter End", "Till Year End", "Custom Days"])
     forecast_until = 'year_end'
@@ -56,12 +55,14 @@ if uploaded_file:
         forecast_until = 'custom'
         custom_days = st.number_input("Enter custom number of days", min_value=1, value=30)
 
+    # Events
     st.markdown("### 📅 Any Special Events or Seasonal Days")
     include_events = st.radio("Include Special Event Dates?", ["No", "Yes"], horizontal=True)
     event_dates = []
     if include_events == "Yes":
         event_dates = st.date_input("📆 Select One or More Special Dates", [])
 
+    # Run forecast
     if st.button("🚀 Run Forecast"):
         forecast_df, last_data_date, days_left, full_df = forecast_sales(
             df_clean, model_choice, target_mode, event_dates,
@@ -73,6 +74,7 @@ if uploaded_file:
             st.session_state.update({
                 'forecast_df': forecast_df,
                 'df_clean': df_clean,
+                'df_raw': df_raw,  # Save full unfiltered data
                 'full_forecast_df': full_df,
                 'last_data_date': last_data_date,
                 'target_value': target_value,
@@ -81,6 +83,7 @@ if uploaded_file:
                 'show_charts': False
             })
 
+    # After forecast
     if st.session_state.forecast_ran:
         st.subheader("📌 Target Analysis")
         metrics = calculate_target_analysis(
@@ -99,6 +102,7 @@ if uploaded_file:
         st.subheader("🔎 Trend Pattern Insight")
         st.info(detect_pattern(st.session_state.full_forecast_df.dropna(subset=['yhat']).rename(columns={'yhat': 'y'})))
 
+        # Show charts
         if st.button("📈 Show Charts and Table"):
             st.session_state.show_charts = True
 
@@ -110,12 +114,13 @@ if uploaded_file:
             st.subheader("📋 Daily Forecast Table")
             st.dataframe(generate_daily_table(st.session_state.forecast_df))
 
-            # Region-wise checkbox
-            if 'region' in st.session_state.df_clean.columns:
+            # ✅ Region-wise after everything
+            if 'region' in st.session_state.df_raw.columns:
                 show_region_wise = st.checkbox("📍 Show Region-wise Forecast Summary")
+
                 if show_region_wise:
                     region_forecast_df = forecast_by_region(
-                        st.session_state.df_clean,
+                        st.session_state.df_raw,  # Use raw, full dataset
                         model_choice,
                         event_dates=event_dates,
                         forecast_until=forecast_until,
