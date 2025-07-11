@@ -41,8 +41,7 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
         model = Prophet(daily_seasonality=True)
         model.fit(df_grouped)
         future = pd.DataFrame({'ds': future_dates})
-        forecast = model.predict(future)
-        forecast = forecast[['ds', 'yhat']]
+        forecast = model.predict(future)[['ds', 'yhat']]
     elif model_type == "Linear":
         df_grouped['ds_ord'] = df_grouped['ds'].map(datetime.toordinal)
         m, b = polyfit(df_grouped['ds_ord'], df_grouped['y'], 1)
@@ -60,17 +59,50 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
 
     return forecast, last_data_date, forecast_days, forecast_full
 
+def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_end', custom_days=None):
+    df = df.copy()
+    df.columns = df.columns.str.lower()
+
+    if 'region' not in df.columns or 'date' not in df.columns or 'target' not in df.columns:
+        return pd.DataFrame(columns=['Region', 'Forecasted Volume'])
+
+    regions = df['region'].dropna().unique()
+    region_forecasts = []
+
+    for region in regions:
+        region_df = df[df['region'] == region].copy()
+        if region_df.empty:
+            continue
+        forecast, _, _, _ = forecast_sales(region_df, model_type, 'Yearly', event_dates, forecast_until, custom_days)
+        if not forecast.empty:
+            total = forecast['yhat'].sum()
+            region_forecasts.append({'Region': region, 'Forecasted Volume': round(total, 2)})
+
+    df_out = pd.DataFrame(region_forecasts)
+
+    if 'Forecasted Volume' in df_out.columns and not df_out.empty:
+        return df_out.sort_values(by="Forecasted Volume", ascending=False)
+    return df_out
+
+def plot_region_contribution_pie(df):
+    if 'Region' in df.columns and 'Forecasted Volume' in df.columns:
+        fig = px.pie(df, names='Region', values='Forecasted Volume', title='📊 Region-wise Forecasted Contribution')
+        return fig
+    return go.Figure()
+
 def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     if mode == 'Monthly':
         current = df[(df['date'].dt.month == last_date.month) & (df['date'].dt.year == last_date.year)]['target'].sum()
     else:
         current = df[df['date'].dt.year == last_date.year]['target'].sum()
+
     forecast = forecast_df[forecast_df['ds'] > last_date]['yhat'].sum()
     total = current + forecast
     remaining = max(0, target - current)
     days_left = (forecast_df['ds'].max() - last_date).days
     per_day = round(remaining / days_left, 2) if days_left > 0 else 0
     pct = round((total / target) * 100, 2)
+
     return {
         "📌 Target": target,
         "🟢 Current Sales": round(current, 2),
@@ -88,7 +120,8 @@ def generate_recommendations(metrics):
     return f"⚠️ You need to sell {metrics['📈 Required Per Day']} units/day for {metrics['📅 Days Left to Forecast']} days."
 
 def detect_pattern(df_grouped):
-    slope = polyfit(range(len(df_grouped)), df_grouped['yhat'], 1)[0]
+    df_grouped['rolling_mean'] = df_grouped['yhat'].rolling(window=7).mean()
+    slope = polyfit(range(len(df_grouped['rolling_mean'].dropna())), df_grouped['rolling_mean'].dropna(), 1)[0]
     if abs(slope) < 1e-2:
         return "↔️ Stationary or flat trend"
     elif slope > 0:
@@ -99,8 +132,8 @@ def detect_pattern(df_grouped):
 def plot_forecast(df):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat'], name='Forecast'))
-    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_upper'], name='Upper Bound', line=dict(dash='dot')))
-    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_lower'], name='Lower Bound', line=dict(dash='dot')))
+    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_upper'], name='Upper', line=dict(dash='dot')))
+    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_lower'], name='Lower', line=dict(dash='dot')))
     fig.update_layout(title="📈 Forecast with Confidence Bands", xaxis_title="Date", yaxis_title="Sales")
     return fig
 
@@ -123,28 +156,9 @@ def generate_daily_table(forecast_df):
     return forecast_df[['ds', 'yhat']].rename(columns={'ds': 'Date', 'yhat': 'Forecasted Sales'}).round(2)
 
 def get_forecast_explanation(method):
-    return {
-        "Prophet": "Prophet models trends and seasonality.",
-        "Linear": "Linear regression fits a trend line.",
-        "Exponential": "Exponential smoothing emphasizes recent data."
-    }.get(method, "No explanation available.")
-
-def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_end', custom_days=None):
-    if 'region' not in df.columns:
-        return pd.DataFrame(columns=['Region', 'Forecasted Volume'])
-
-    regions = df['region'].dropna().unique()
-    region_forecasts = []
-
-    for region in regions:
-        region_df = df[df['region'] == region].copy()
-        forecast, _, _, _ = forecast_sales(region_df, model_type, 'Yearly', event_dates, forecast_until, custom_days)
-        if not forecast.empty:
-            total = forecast['yhat'].sum()
-            region_forecasts.append({'Region': region, 'Forecasted Volume': round(total, 2)})
-
-    return pd.DataFrame(region_forecasts)
-
-def plot_region_contribution_pie(df):
-    fig = px.pie(df, names='Region', values='Forecasted Volume', title='📊 Region-wise Forecasted Contribution')
-    return fig
+    explanations = {
+        "Prophet": "Prophet models trends and special events to forecast future sales.",
+        "Linear": "Linear regression fits a simple trend line based on past values.",
+        "Exponential": "Exponential smoothing weighs recent values more heavily."
+    }
+    return explanations.get(method, "No explanation available.")
