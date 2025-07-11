@@ -93,20 +93,30 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
 
 def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_end', custom_days=None):
     if 'region' not in df.columns:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['Region', 'Forecasted Volume'])
 
     regions = df['region'].dropna().unique()
     region_forecasts = []
 
     for region in regions:
-        region_df = df[df['region'] == region]
-        forecast, _, _, _ = forecast_sales(
-            region_df, model_type, target_mode='Yearly', event_dates=event_dates,
-            forecast_until=forecast_until, custom_days=custom_days
-        )
-        if not forecast.empty:
-            total_forecast = forecast['yhat'].sum()
-            region_forecasts.append({'Region': region, 'Forecasted Volume': total_forecast})
+        region_df = df[df['region'] == region].copy()
+        if region_df.empty:
+            continue
+        try:
+            forecast, _, _, _ = forecast_sales(
+                region_df,
+                model_type,
+                target_mode='Yearly',
+                event_dates=event_dates,
+                forecast_until=forecast_until,
+                custom_days=custom_days
+            )
+            if not forecast.empty:
+                total_forecast = forecast['yhat'].sum()
+                region_forecasts.append({'Region': region, 'Forecasted Volume': total_forecast})
+        except Exception as e:
+            print(f"Error forecasting for region {region}: {e}")
+            continue
 
     return pd.DataFrame(region_forecasts).sort_values(by='Forecasted Volume', ascending=False)
 
@@ -126,10 +136,10 @@ def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     return {
         "📌 Target": target,
         "🟢 Current Sales": round(current, 2),
-        "🔮 Forecasted Sales (Remaining Days)": round(forecast, 2),
-        "📊 Total Projected (Actual + Forecast)": round(total, 2),
+        "🔮 Forecasted Sales (Remaining Days)": round(forecast, 0),
+        "📊 Total Projected (Actual + Forecast)": round(total, 0),
         "📉 Remaining to Hit Target": round(remaining, 2),
-        "📅 Days Left to Forecast": days_left,
+        "📅 Days Forecasted": days_left,
         "📈 Required Per Day": per_day,
         "🎯 Projected % of Target": pct
     }
