@@ -1,6 +1,7 @@
-pandas
-numpy
-plotly
 streamlit
+pandas
 prophet
+plotly
+openpyxl
 statsmodels
+numpy
