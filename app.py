@@ -117,8 +117,8 @@ if uploaded_file:
                         st.dataframe(region_df)
                         st.plotly_chart(plot_region_contribution_pie(region_df), use_container_width=True)
 
-                        st.subheader("\ud83c\udfc6 Region-wise Current Sales Distribution")
-                        st.plotly_chart(plot_region_current_sales_pie(df_region), use_container_width=True)
+                        st.subheader("\ud83c\udfc6 Region-wise Current Sales Contribution")
+                        st.plotly_chart(plot_region_current_sales_pie(df_clean), use_container_width=True)
                     else:
                         st.warning("\u26a0\ufe0f No region data found to generate forecast.")
 else:
