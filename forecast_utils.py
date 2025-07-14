@@ -1,150 +1,168 @@
-import streamlit as st
 import pandas as pd
-from forecast_utils import (
-    preprocess_data, forecast_sales,
-    calculate_target_analysis, generate_recommendations,
-    plot_forecast, plot_actual_vs_forecast,
-    plot_daily_bar_chart, generate_daily_table,
-    get_forecast_explanation, detect_pattern,
-    forecast_by_region, plot_region_contribution_pie,
-    plot_region_current_sales_pie
-)
+from datetime import datetime, timedelta
+from prophet import Prophet
+import plotly.graph_objects as go
+import plotly.express as px
+from numpy import polyfit
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from calendar import monthrange
 
-# Configure page
-st.set_page_config(page_title="Smart Sales Forecast App", layout="wide")
-st.title("Smart Sales Forecast & Target Tracker - HICO")
+def preprocess_data(df, date_col, target_col, filters=[]):
+    df = df[[date_col, target_col] + filters].copy()
+    df.columns = ['date', 'target'] + filters
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df['target'] = pd.to_numeric(df['target'], errors='coerce')
+    df.dropna(subset=['date', 'target'], inplace=True)
+    return df
 
-# Initialize session state
-if 'forecast_ran' not in st.session_state:
-    st.session_state.forecast_ran = False
-if 'show_charts' not in st.session_state:
-    st.session_state.show_charts = False
+def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until='year_end', custom_days=None):
+    df_grouped = df.groupby("date")["target"].sum().reset_index()
+    df_grouped.columns = ['ds', 'y']
+    df_grouped = df_grouped.sort_values("ds")
+    last_data_date = pd.to_datetime(df_grouped['ds'].max())
 
-# File uploader
-uploaded_file = st.file_uploader("Upload Sales File (CSV or Excel)", type=["csv", "xlsx"])
+    if forecast_until == 'month_end':
+        year, month = last_data_date.year, last_data_date.month
+        end_date = datetime(year, month, monthrange(year, month)[1])
+    elif forecast_until == 'quarter_end':
+        q_month = ((last_data_date.month - 1) // 3 + 1) * 3
+        end_date = datetime(last_data_date.year, q_month, monthrange(last_data_date.year, q_month)[1])
+    elif forecast_until == 'custom':
+        end_date = last_data_date + timedelta(days=custom_days)
+    else:
+        end_date = datetime(last_data_date.year, 12, 31)
 
-if uploaded_file:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df_raw = pd.read_csv(uploaded_file)
-        else:
-            import openpyxl  # ensure openpyxl is installed
-            df_raw = pd.read_excel(uploaded_file, engine='openpyxl')
-    except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
-        st.stop()
+    future_dates = pd.date_range(start=last_data_date + timedelta(days=1), end=end_date)
+    forecast_days = len(future_dates)
+    if forecast_days <= 0:
+        return pd.DataFrame(), last_data_date, 0, df_grouped
 
-    # Clean column names
-    df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
-    st.session_state.df_raw = df_raw
+    if model_type == "Prophet":
+        model = Prophet(daily_seasonality=True)
+        model.fit(df_grouped)
+        future = pd.DataFrame({'ds': future_dates})
+        forecast = model.predict(future)[['ds', 'yhat']]
+    elif model_type == "Linear":
+        df_grouped['ds_ord'] = df_grouped['ds'].map(datetime.toordinal)
+        m, b = polyfit(df_grouped['ds_ord'], df_grouped['y'], 1)
+        forecast = pd.DataFrame({'ds': future_dates})
+        forecast['yhat'] = [m * d.toordinal() + b for d in forecast['ds']]
+    elif model_type == "Exponential":
+        model = ExponentialSmoothing(df_grouped['y'], trend='add').fit()
+        forecast_vals = model.forecast(forecast_days)
+        forecast = pd.DataFrame({'ds': future_dates, 'yhat': forecast_vals})
 
-    st.success("✅ File uploaded successfully!")
+    forecast_full = pd.concat([
+        df_grouped[['ds', 'y']].rename(columns={'y': 'yhat'}),
+        forecast
+    ], ignore_index=True).sort_values('ds')
 
-    if st.checkbox("Show Data"):
-        st.dataframe(df_raw.head())
+    forecast_full['yhat_lower'] = forecast_full['yhat'] * 0.95
+    forecast_full['yhat_upper'] = forecast_full['yhat'] * 1.05
 
-    # Select columns
-    date_col = st.selectbox("Select Date Column", df_raw.select_dtypes(include=["object", "datetime"]).columns)
-    target_col = st.selectbox("Select Sales/Quantity Column", df_raw.select_dtypes("number").columns)
-    filters = st.multiselect("Select Filter Columns (Optional)", [col for col in df_raw.columns if col not in [date_col, target_col]])
+    return forecast, last_data_date, forecast_days, forecast_full
 
-    # Preprocess data
-    df_clean = preprocess_data(df_raw, date_col, target_col, filters)
-    st.session_state.df_clean = df_clean
+def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_end', custom_days=None):
+    df = df.copy()
+    df.columns = df.columns.str.lower()
+    if 'region' not in df.columns or 'date' not in df.columns or 'target' not in df.columns:
+        return pd.DataFrame(columns=['Region', 'Forecasted_Volume'])
 
-    # Forecasting options
-    st.markdown("## Select Forecasting Method")
-    model_choice = st.radio("Choose a method", ["Prophet", "Linear", "Exponential"])
-    st.caption(get_forecast_explanation(model_choice))
+    regions = df['region'].dropna().unique()
+    region_forecasts = []
 
-    target_mode = st.radio("Target Period", ["Monthly", "Yearly"], horizontal=True)
-    target_value = st.number_input("Enter Your Sales Target", step=1000)
+    for region in regions:
+        region_df = df[df['region'] == region]
+        if region_df.empty:
+            continue
+        forecast, _, _, _ = forecast_sales(region_df, model_type, 'Yearly', event_dates, forecast_until, custom_days)
+        if not forecast.empty:
+            total = forecast['yhat'].sum()
+            region_forecasts.append({'Region': region, 'Forecasted_Volume': round(total, 2)})
 
-    st.markdown("## Select Forecast Horizon")
-    forecast_range = st.selectbox("How far do you want to forecast?", ["Till Month End", "Till Quarter End", "Till Year End", "Custom Days"])
-    forecast_until = 'year_end'
-    custom_days = None
-    if forecast_range == "Till Month End":
-        forecast_until = 'month_end'
-    elif forecast_range == "Till Quarter End":
-        forecast_until = 'quarter_end'
-    elif forecast_range == "Custom Days":
-        forecast_until = 'custom'
-        custom_days = st.number_input("Enter custom number of days", min_value=1, value=30)
+    df_out = pd.DataFrame(region_forecasts)
+    return df_out.sort_values(by="Forecasted_Volume", ascending=False) if not df_out.empty else df_out
 
-    # Event dates (optional)
-    st.markdown("### Any Special Events or Seasonal Days")
-    include_events = st.radio("Include Special Event Dates?", ["No", "Yes"], horizontal=True)
-    event_dates = []
-    if include_events == "Yes":
-        event_dates = st.date_input("Select One or More Special Dates", [])
+def plot_region_contribution_pie(df):
+    if 'Region' in df.columns and 'Forecasted_Volume' in df.columns and not df.empty:
+        return px.pie(df, names='Region', values='Forecasted_Volume', title='Region-wise Forecasted Contribution')
+    return go.Figure()
 
-    # Run forecast
-    if st.button("Run Forecast"):
-        forecast_df, last_data_date, days_left, full_df = forecast_sales(
-            df_clean, model_choice, target_mode, event_dates,
-            forecast_until=forecast_until, custom_days=custom_days
-        )
-        if forecast_df.empty:
-            st.warning("⚠️ Not enough data or no remaining days to forecast.")
-        else:
-            st.session_state.forecast_df = forecast_df
-            st.session_state.full_forecast_df = full_df
-            st.session_state.last_data_date = last_data_date
-            st.session_state.target_value = target_value
-            st.session_state.target_mode = target_mode
-            st.session_state.forecast_ran = True
-            st.session_state.show_charts = False
+def plot_region_current_sales_pie(df):
+    if 'region' in df.columns and 'date' in df.columns and 'target' in df.columns:
+        region_sales = df.groupby('region')['target'].sum().reset_index()
+        region_sales.columns = ['Region', 'Current_Sales']
+        return px.pie(region_sales, names='Region', values='Current_Sales', title='Region-wise Current Sales Contribution')
+    return go.Figure()
 
-    # Post forecast visualizations and metrics
-    if st.session_state.forecast_ran:
-        st.subheader("Target Analysis")
-        metrics = calculate_target_analysis(
-            st.session_state.df_clean,
-            st.session_state.forecast_df,
-            st.session_state.last_data_date,
-            st.session_state.target_value,
-            st.session_state.target_mode
-        )
+def detect_pattern(df_grouped):
+    df_grouped['rolling_mean'] = df_grouped['y'].rolling(window=7).mean()
+    slope = polyfit(range(len(df_grouped['rolling_mean'].dropna())), df_grouped['rolling_mean'].dropna(), 1)[0]
+    if abs(slope) < 1e-2:
+        return "Stationary or flat trend"
+    elif slope > 0:
+        return "Upward trend detected"
+    else:
+        return "Downward trend detected"
 
-        for k, v in metrics.items():
-            try:
-                st.metric(label=str(k), value=str(v))
-            except Exception:
-                st.write(f"{k}: {v}")  # fallback for unicode/encoding issues
+def calculate_target_analysis(df, forecast_df, last_date, target, mode):
+    if mode == 'Monthly':
+        current = df[(df['date'].dt.month == last_date.month) & (df['date'].dt.year == last_date.year)]['target'].sum()
+    else:
+        current = df[df['date'].dt.year == last_date.year]['target'].sum()
 
-        st.success(generate_recommendations(metrics))
+    forecast = forecast_df[forecast_df['ds'] > last_date]['yhat'].sum()
+    total = current + forecast
+    remaining = max(0, target - current)
+    days_left = (forecast_df['ds'].max() - last_date).days
+    per_day = round(remaining / days_left, 2) if days_left > 0 else 0
+    pct = round((total / target) * 100, 2)
 
-        st.subheader("Trend Pattern Insight")
-        try:
-            st.info(detect_pattern(st.session_state.full_forecast_df.dropna(subset=['yhat']).rename(columns={'yhat': 'y'})))
-        except Exception as e:
-            st.warning(f"Pattern detection failed: {e}")
+    return {
+        "Target": target,
+        "Current Sales": round(current, 2),
+        "Forecasted Sales (Remaining)": round(forecast, 2),
+        "Total Projected": round(total, 2),
+        "Remaining to Hit Target": round(remaining, 2),
+        "Days Left to Forecast": days_left,
+        "Required Per Day": per_day,
+        "Projected % of Target": pct
+    }
 
-        if st.button("Show Charts and Table"):
-            st.session_state.show_charts = True
+def generate_recommendations(metrics):
+    if metrics["Projected % of Target"] >= 100:
+        return "You're on track or exceeding your goal!"
+    return f"You need to sell {metrics['Required Per Day']} units/day for {metrics['Days Left to Forecast']} days."
 
-        if st.session_state.show_charts:
-            st.plotly_chart(plot_forecast(st.session_state.full_forecast_df), use_container_width=True)
-            st.plotly_chart(plot_actual_vs_forecast(st.session_state.df_clean, st.session_state.full_forecast_df), use_container_width=True)
-            st.plotly_chart(plot_daily_bar_chart(st.session_state.df_clean), use_container_width=True)
+def plot_forecast(df):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat'], name='Forecast'))
+    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_upper'], name='Upper', line=dict(dash='dot')))
+    fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_lower'], name='Lower', line=dict(dash='dot')))
+    fig.update_layout(title="Forecast with Confidence Bands", xaxis_title="Date", yaxis_title="Sales")
+    return fig
 
-            st.subheader("Daily Forecast Table")
-            st.dataframe(generate_daily_table(st.session_state.forecast_df))
+def plot_actual_vs_forecast(df, forecast_df):
+    actual = df.groupby('date')['target'].sum().reset_index()
+    actual.columns = ['ds', 'y']
+    merged = pd.merge(forecast_df[['ds', 'yhat']], actual, on='ds', how='left')
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=merged['ds'], y=merged['yhat'], name='Forecast'))
+    fig.add_trace(go.Scatter(x=merged['ds'], y=merged['y'], name='Actual'))
+    fig.update_layout(title='Actual vs Forecasted', xaxis_title='Date', yaxis_title='Sales')
+    return fig
 
-            if 'region' in df_raw.columns:
-                show_region_summary = st.checkbox("Show Region-wise Forecast Summary")
-                if show_region_summary:
-                    df_region = preprocess_data(df_raw, date_col, target_col, ['region'])
-                    region_df = forecast_by_region(df_region, model_choice, event_dates, forecast_until, custom_days)
-                    if not region_df.empty:
-                        st.subheader("Region-wise Forecast Summary")
-                        st.dataframe(region_df)
-                        st.plotly_chart(plot_region_contribution_pie(region_df), use_container_width=True)
+def plot_daily_bar_chart(df):
+    daily = df.groupby('date')['target'].sum().reset_index()
+    return px.bar(daily, x='date', y='target', title="Daily Sales Trend")
 
-                        st.subheader("Region-wise Current Sales Contribution")
-                        st.plotly_chart(plot_region_current_sales_pie(df_clean), use_container_width=True)
-                    else:
-                        st.warning("⚠️ No region data found to generate forecast.")
-else:
-    st.info("📂 Upload data file to begin.")
+def generate_daily_table(forecast_df):
+    return forecast_df[['ds', 'yhat']].rename(columns={'ds': 'Date', 'yhat': 'Forecasted Sales'}).round(2)
+
+def get_forecast_explanation(method):
+    explanations = {
+        "Prophet": "Prophet models trends and special events to forecast future sales.",
+        "Linear": "Linear regression fits a simple trend line based on past values.",
+        "Exponential": "Exponential smoothing weighs recent values more heavily."
+    }
+    return explanations.get(method, "No explanation available.")
