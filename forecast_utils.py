@@ -88,12 +88,12 @@ def plot_region_contribution_pie(df):
         return px.pie(df, names='Region', values='Forecasted_Volume', title='Region-wise Forecasted Contribution')
     return go.Figure()
 
-def plot_region_current_sales_pie(df):
-    if 'region' in df.columns and 'date' in df.columns and 'target' in df.columns:
-        region_sales = df.groupby('region')['target'].sum().reset_index()
-        region_sales.columns = ['Region', 'Current_Sales']
-        return px.pie(region_sales, names='Region', values='Current_Sales', title='Region-wise Current Sales Contribution')
-    return go.Figure()
+#def plot_region_current_sales_pie(df):
+    #if 'region' in df.columns and 'date' in df.columns and 'target' in df.columns:
+        #region_sales = df.groupby('region')['target'].sum().reset_index()
+        #region_sales.columns = ['Region', 'Current_Sales']
+        #return px.pie(region_sales, names='Region', values='Current_Sales', title='Region-wise Current Sales Contribution')
+    #return go.Figure()
 
 def detect_pattern(df_grouped):
     df_grouped['rolling_mean'] = df_grouped['y'].rolling(window=7).mean()
