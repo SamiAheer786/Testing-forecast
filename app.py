@@ -10,32 +10,49 @@ from forecast_utils import (
     plot_region_current_sales_pie
 )
 
+# Configure page
 st.set_page_config(page_title="Smart Sales Forecast App", layout="wide")
 st.title("Smart Sales Forecast & Target Tracker - HICO")
 
+# Initialize session state
 if 'forecast_ran' not in st.session_state:
     st.session_state.forecast_ran = False
 if 'show_charts' not in st.session_state:
     st.session_state.show_charts = False
 
+# File uploader
 uploaded_file = st.file_uploader("Upload Sales File (CSV or Excel)", type=["csv", "xlsx"])
 
 if uploaded_file:
-    df_raw = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df_raw = pd.read_csv(uploaded_file)
+        else:
+            import openpyxl  # ensure openpyxl is installed
+            df_raw = pd.read_excel(uploaded_file, engine='openpyxl')
+    except Exception as e:
+        st.error(f"❌ Error reading file: {e}")
+        st.stop()
+
+    # Clean column names
     df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
     st.session_state.df_raw = df_raw
 
-    st.success("File uploaded successfully!")
+    st.success("✅ File uploaded successfully!")
+
     if st.checkbox("Show Data"):
         st.dataframe(df_raw.head())
 
+    # Select columns
     date_col = st.selectbox("Select Date Column", df_raw.select_dtypes(include=["object", "datetime"]).columns)
     target_col = st.selectbox("Select Sales/Quantity Column", df_raw.select_dtypes("number").columns)
     filters = st.multiselect("Select Filter Columns (Optional)", [col for col in df_raw.columns if col not in [date_col, target_col]])
 
+    # Preprocess data
     df_clean = preprocess_data(df_raw, date_col, target_col, filters)
     st.session_state.df_clean = df_clean
 
+    # Forecasting options
     st.markdown("## Select Forecasting Method")
     model_choice = st.radio("Choose a method", ["Prophet", "Linear", "Exponential"])
     st.caption(get_forecast_explanation(model_choice))
@@ -55,19 +72,21 @@ if uploaded_file:
         forecast_until = 'custom'
         custom_days = st.number_input("Enter custom number of days", min_value=1, value=30)
 
+    # Event dates (optional)
     st.markdown("### Any Special Events or Seasonal Days")
     include_events = st.radio("Include Special Event Dates?", ["No", "Yes"], horizontal=True)
     event_dates = []
     if include_events == "Yes":
         event_dates = st.date_input("Select One or More Special Dates", [])
 
+    # Run forecast
     if st.button("Run Forecast"):
         forecast_df, last_data_date, days_left, full_df = forecast_sales(
             df_clean, model_choice, target_mode, event_dates,
             forecast_until=forecast_until, custom_days=custom_days
         )
         if forecast_df.empty:
-            st.warning("Not enough data or no remaining days to forecast.")
+            st.warning("⚠️ Not enough data or no remaining days to forecast.")
         else:
             st.session_state.forecast_df = forecast_df
             st.session_state.full_forecast_df = full_df
@@ -77,6 +96,7 @@ if uploaded_file:
             st.session_state.forecast_ran = True
             st.session_state.show_charts = False
 
+    # Post forecast visualizations and metrics
     if st.session_state.forecast_ran:
         st.subheader("Target Analysis")
         metrics = calculate_target_analysis(
@@ -90,13 +110,16 @@ if uploaded_file:
         for k, v in metrics.items():
             try:
                 st.metric(label=str(k), value=str(v))
-            except Exception as e:
-                st.text(f"{k}: {v}")
+            except Exception:
+                st.write(f"{k}: {v}")  # fallback for unicode/encoding issues
 
         st.success(generate_recommendations(metrics))
 
         st.subheader("Trend Pattern Insight")
-        st.info(detect_pattern(st.session_state.full_forecast_df.dropna(subset=['yhat']).rename(columns={'yhat': 'y'})))
+        try:
+            st.info(detect_pattern(st.session_state.full_forecast_df.dropna(subset=['yhat']).rename(columns={'yhat': 'y'})))
+        except Exception as e:
+            st.warning(f"Pattern detection failed: {e}")
 
         if st.button("Show Charts and Table"):
             st.session_state.show_charts = True
@@ -122,6 +145,6 @@ if uploaded_file:
                         st.subheader("Region-wise Current Sales Contribution")
                         st.plotly_chart(plot_region_current_sales_pie(df_clean), use_container_width=True)
                     else:
-                        st.warning("No region data found to generate forecast.")
+                        st.warning("⚠️ No region data found to generate forecast.")
 else:
-    st.info("Upload data file to begin.")
+    st.info("📂 Upload data file to begin.")
