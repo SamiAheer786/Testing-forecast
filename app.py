@@ -88,7 +88,10 @@ if uploaded_file:
         )
 
         for k, v in metrics.items():
-            st.metric(label=k, value=v)
+            try:
+                st.metric(label=str(k), value=str(v))
+            except Exception as e:
+                st.text(f"{k}: {v}")
 
         st.success(generate_recommendations(metrics))
 
