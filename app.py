@@ -7,19 +7,10 @@ from forecast_utils import (
     plot_forecast, plot_actual_vs_forecast,
     plot_daily_bar_chart, generate_daily_table,
     get_forecast_explanation, detect_pattern,
-    forecast_by_region
+    forecast_by_region  # do not remove this
 )
 
-# Custom function override (updated pie chart logic)
-def plot_region_current_sales_pie(df):
-    if 'region' in df.columns and 'target' in df.columns:
-        region_sales = df.groupby('region', as_index=False)['target'].sum()
-        region_sales.columns = ['Region', 'Current_Sales']
-        if not region_sales.empty and region_sales['Current_Sales'].sum() > 0:
-            fig = px.pie(region_sales, names='Region', values='Current_Sales',
-                         title='📊 Region-wise Current Sales Contribution')
-            return fig
-    return px.pie(title='⚠️ No data available to plot')
+# ⛔️ Removed plot_region_current_sales_pie function to exclude that logic
 
 # Configure page
 st.set_page_config(page_title="Smart Sales Forecast App", layout="wide")
@@ -152,9 +143,7 @@ if uploaded_file:
                         st.subheader("Region-wise Forecast Summary")
                         st.dataframe(region_df)
                         st.plotly_chart(px.pie(region_df, names='Region', values='Forecasted_Volume', title='📊 Region-wise Forecasted Contribution'), use_container_width=True)
-
-                        st.subheader("Region-wise Current Sales Contribution")
-                        st.plotly_chart(plot_region_current_sales_pie(df_clean), use_container_width=True)
+                        # ⛔️ Removed Region-wise Current Sales Contribution chart
                     else:
                         st.warning("⚠️ No region data found to generate forecast.")
 else:
