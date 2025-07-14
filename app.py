@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from forecast_utils import (
     preprocess_data, forecast_sales,
     calculate_target_analysis, generate_recommendations,
@@ -11,31 +10,16 @@ from forecast_utils import (
     forecast_by_region
 )
 
-# Patched version of region-wise current sales pie
-
+# Custom function override (updated pie chart logic)
 def plot_region_current_sales_pie(df):
-    if 'region' not in df.columns:
-        return go.Figure().update_layout(title="⚠️ 'region' column missing")
-
-    if 'target' not in df.columns:
-        return go.Figure().update_layout(title="⚠️ 'target' column missing")
-
-    try:
-        df = df.copy()
-        df['target'] = pd.to_numeric(df['target'], errors='coerce')
-        df = df.dropna(subset=['region', 'target'])
-
-        region_sales = df.groupby('region')['target'].sum().reset_index()
+    if 'region' in df.columns and 'target' in df.columns:
+        region_sales = df.groupby('region', as_index=False)['target'].sum()
         region_sales.columns = ['Region', 'Current_Sales']
-
-        if region_sales.empty:
-            return go.Figure().update_layout(title="⚠️ No sales data available to plot")
-
-        fig = px.pie(region_sales, names='Region', values='Current_Sales', title='🏆 Region-wise Current Sales Contribution')
-        return fig
-
-    except Exception as e:
-        return go.Figure().update_layout(title=f"❌ Error: {e}")
+        if not region_sales.empty and region_sales['Current_Sales'].sum() > 0:
+            fig = px.pie(region_sales, names='Region', values='Current_Sales',
+                         title='📊 Region-wise Current Sales Contribution')
+            return fig
+    return px.pie(title='⚠️ No data available to plot')
 
 # Configure page
 st.set_page_config(page_title="Smart Sales Forecast App", layout="wide")
@@ -167,7 +151,7 @@ if uploaded_file:
                     if not region_df.empty:
                         st.subheader("Region-wise Forecast Summary")
                         st.dataframe(region_df)
-                        st.plotly_chart(plot_region_contribution_pie(region_df), use_container_width=True)
+                        st.plotly_chart(px.pie(region_df, names='Region', values='Forecasted_Volume', title='📊 Region-wise Forecasted Contribution'), use_container_width=True)
 
                         st.subheader("Region-wise Current Sales Contribution")
                         st.plotly_chart(plot_region_current_sales_pie(df_clean), use_container_width=True)
