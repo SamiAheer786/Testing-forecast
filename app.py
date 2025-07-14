@@ -106,7 +106,6 @@ if uploaded_file:
             st.subheader("\ud83d\udccb Daily Forecast Table")
             st.dataframe(generate_daily_table(st.session_state.forecast_df))
 
-            # Region-wise summary
             if 'region' in df_raw.columns:
                 show_region_summary = st.checkbox("\ud83d\udccd Show Region-wise Forecast Summary")
                 if show_region_summary:
