@@ -12,7 +12,7 @@ from forecast_utils import (
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="🍦 H I C O Ice Cream Sales Forecast", layout="wide")
-st.markdown("<h1 style='text-align:center; color:#FF69B4;'>🍨 H I C O Sales Forecast & Target Tracker</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color:#005BAB;'>🍨 <span style='color:#E30613;'>H I C O</span> Sales Forecast & Target Tracker</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:gray;'>Scoop your way into smart sales planning! 🍧📊</p>", unsafe_allow_html=True)
 st.markdown("---")
 
