@@ -121,7 +121,7 @@ if uploaded_file:
             # Show other metrics as text
             if len(keys) > 3:
                 for i in range(3, len(keys)):
-                    st.write(f"👉 **{keys[i]}:** {metrics[keys[i]]}")
+                    st.write(f" **{keys[i]}:** {metrics[keys[i]]}")
 
             st.success("📌 " + generate_recommendations(metrics))
 
@@ -133,7 +133,7 @@ if uploaded_file:
             st.warning(f"⚠️ Pattern detection failed: {e}")
 
         # ---------------- SHOW ALL GRAPHS AT ONCE ----------------
-        if st.button("📊 Show All Charts", use_container_width=True):
+        if st.button("📊 See All Charts", use_container_width=True):
             st.session_state.show_charts = True
 
         if st.session_state.show_charts:
@@ -165,4 +165,4 @@ if uploaded_file:
                         else:
                             st.warning("⚠️ No region data available.")
 else:
-    st.info("📂 Please upload your Data file to get started!")
+    st.info(" Please upload your Data file to get started!")
