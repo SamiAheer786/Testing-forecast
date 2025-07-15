@@ -11,8 +11,8 @@ from forecast_utils import (
 )
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="🍦 Hico Ice Cream Sales Forecast", layout="wide")
-st.markdown("<h1 style='text-align:center; color:#FF69B4;'>🍨 Hico Ice Cream Sales Forecast & Target Tracker</h1>", unsafe_allow_html=True)
+st.set_page_config(page_title="🍦 H I C O Ice Cream Sales Forecast", layout="wide")
+st.markdown("<h1 style='text-align:center; color:#FF69B4;'>🍨 H I C O Sales Forecast & Target Tracker</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:gray;'>Scoop your way into smart sales planning! 🍧📊</p>", unsafe_allow_html=True)
 st.markdown("---")
 
@@ -76,7 +76,7 @@ if uploaded_file:
         custom_days = st.number_input("🗓️ Enter custom days", min_value=1, value=30)
 
     # ---------------- EVENTS ----------------
-    with st.expander("🎉 Add Seasonal Events (e.g., Eid, Summer Launch)"):
+    with st.expander("🎉 Add Seasonal Events? (e.g., Eid, Summer Launch)"):
         include_events = st.radio("Include Special Dates?", ["No", "Yes"], horizontal=True)
         event_dates = st.date_input("📌 Pick Dates", []) if include_events == "Yes" else []
 
@@ -87,7 +87,7 @@ if uploaded_file:
             forecast_until=forecast_until, custom_days=custom_days
         )
         if forecast_df.empty:
-            st.warning("⚠️ Not enough data or no remaining days to forecast.")
+            st.warning("⚠️ Not enough data or no remaining days forecast.")
         else:
             st.session_state.forecast_df = forecast_df
             st.session_state.full_forecast_df = full_df
@@ -165,4 +165,4 @@ if uploaded_file:
                         else:
                             st.warning("⚠️ No region data available.")
 else:
-    st.info("📂 Please upload your ice cream sales data to get started!")
+    st.info("📂 Please upload your Data file to get started!")
