@@ -102,7 +102,7 @@ if uploaded_file:
         st.markdown("---")
         st.markdown("## 🍦 Forecast Results & Dashboard")
 
-        with st.expander("📈 Target Achievement Overview"):
+        with st.expander("📈 Target Achievement Overview", expanded=True):
             metrics = calculate_target_analysis(
                 st.session_state.df_clean,
                 st.session_state.forecast_df,
@@ -111,12 +111,17 @@ if uploaded_file:
                 st.session_state.target_mode
             )
 
+            # Show key metrics
             col1, col2, col3 = st.columns(3)
             keys = list(metrics.keys())
-            if len(keys) >= 3:
-                col1.metric(label=f"🍧 {keys[0]}", value=str(metrics[keys[0]]))
-                col2.metric(label=f"🍨 {keys[1]}", value=str(metrics[keys[1]]))
-                col3.metric(label=f"🍦 {keys[2]}", value=str(metrics[keys[2]]))
+            for i, col in enumerate([col1, col2, col3]):
+                if i < len(keys):
+                    col.metric(label=f"🍧 {keys[i]}", value=str(metrics[keys[i]]))
+
+            # Show other metrics as text
+            if len(keys) > 3:
+                for i in range(3, len(keys)):
+                    st.write(f"👉 **{keys[i]}:** {metrics[keys[i]]}")
 
             st.success("📌 " + generate_recommendations(metrics))
 
@@ -127,19 +132,22 @@ if uploaded_file:
         except Exception as e:
             st.warning(f"⚠️ Pattern detection failed: {e}")
 
+        # ---------------- SHOW ALL GRAPHS AT ONCE ----------------
         if st.button("📊 Show All Charts", use_container_width=True):
             st.session_state.show_charts = True
 
         if st.session_state.show_charts:
-            tab1, tab2, tab3 = st.tabs(["📈 Forecast Trend", "📉 Actual vs Forecast", "📋 Daily Forecast Table"])
-            with tab1:
-                st.plotly_chart(plot_forecast(st.session_state.full_forecast_df), use_container_width=True)
-            with tab2:
-                st.plotly_chart(plot_actual_vs_forecast(st.session_state.df_clean, st.session_state.full_forecast_df), use_container_width=True)
-            with tab3:
-                st.plotly_chart(plot_daily_bar_chart(st.session_state.df_clean), use_container_width=True)
-                st.subheader("📆 Daily Forecast Table")
-                st.dataframe(generate_daily_table(st.session_state.forecast_df), use_container_width=True)
+            st.subheader("📈 Forecast Trend")
+            st.plotly_chart(plot_forecast(st.session_state.full_forecast_df), use_container_width=True)
+
+            st.subheader("📉 Actual vs Forecast")
+            st.plotly_chart(plot_actual_vs_forecast(st.session_state.df_clean, st.session_state.full_forecast_df), use_container_width=True)
+
+            st.subheader("📋 Daily Sales Overview")
+            st.plotly_chart(plot_daily_bar_chart(st.session_state.df_clean), use_container_width=True)
+
+            st.subheader("📆 Daily Forecast Table")
+            st.dataframe(generate_daily_table(st.session_state.forecast_df), use_container_width=True)
 
             # ---------------- REGION FORECAST ----------------
             if 'region' in df_raw.columns:
