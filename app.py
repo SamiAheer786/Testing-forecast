@@ -40,9 +40,17 @@ if uploaded_file:
 
             df_raw = pd.read_excel(xls, sheet_name=selected_sheet)
 
-    df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
-    st.session_state.df_raw = df_raw
-    st.success("✅ File uploaded successfully! Let's get forecasting 🍦")
+        df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
+        st.session_state.df_raw = df_raw
+        st.success("✅ File uploaded successfully! Let's get forecasting 🍦")
+
+        if st.checkbox("👀 Show Preview of Data"):
+            st.dataframe(df_raw.head(), use_container_width=True)
+
+    except Exception as e:
+        st.error(f"🍓 Error reading file: {e}")
+        st.stop()
+
 
     if st.checkbox("👀 Show Preview of Data"):
         st.dataframe(df_raw.head(), use_container_width=True)
