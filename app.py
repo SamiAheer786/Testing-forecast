@@ -28,10 +28,17 @@ with st.expander("📤 Upload Your Sales File (CSV or Excel)"):
 
 if uploaded_file:
     try:
-        df_raw = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file, engine='openpyxl')
-    except Exception as e:
-        st.error(f"🍓 Error reading file: {e}")
-        st.stop()
+        if uploaded_file.name.endswith(".csv"):
+            df_raw = pd.read_csv(uploaded_file)
+        else:
+            xls = pd.ExcelFile(uploaded_file, engine='openpyxl')
+            sheet_names = xls.sheet_names
+            selected_sheet = sheet_names[0]
+
+            if len(sheet_names) > 1:
+                selected_sheet = st.selectbox("📑 Select Sheet to Load", sheet_names)
+
+            df_raw = pd.read_excel(xls, sheet_name=selected_sheet)
 
     df_raw.columns = df_raw.columns.str.lower().str.strip().str.replace(" ", "_").str.replace(r'[^\w\s]', '', regex=True)
     st.session_state.df_raw = df_raw
