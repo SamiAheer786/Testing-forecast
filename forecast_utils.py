@@ -78,7 +78,10 @@ def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_en
         forecast, _, _, _ = forecast_sales(region_df, model_type, 'Yearly', event_dates, forecast_until, custom_days)
         if not forecast.empty:
             total = forecast['yhat'].sum()
-            region_forecasts.append({'Region': region, 'Forecasted_Volume': round(total, 2)})
+            region_forecasts.append({
+                'Region': region,
+                'Forecasted_Volume': "{:,}".format(round(total))
+            })
 
     df_out = pd.DataFrame(region_forecasts)
     return df_out.sort_values(by="Forecasted_Volume", ascending=False) if not df_out.empty else df_out
@@ -112,18 +115,18 @@ def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     pct = round((total / target) * 100, 2)
 
     return {
-        "Target": target,
-        "Current Sales": round(current, 2),
-        "Forecasted Sales (Remaining)": round(forecast, 2),
-        "Total Projected": round(total, 2),
-        "Remaining to Hit Target": round(remaining, 2),
+        "Target": "{:,}".format(round(target)),
+        "Current Sales": "{:,}".format(round(current)),
+        "Forecasted Sales (Remaining)": "{:,}".format(round(forecast)),
+        "Total Projected": "{:,}".format(round(total)),
+        "Remaining to Hit Target": "{:,}".format(round(remaining)),
         "Days Left to Forecast": days_left,
-        "Required Per Day": per_day,
-        "Projected % of Target": pct
+        "Required Per Day": "{:,}".format(round(per_day)),
+        "Projected % of Target": f"{pct}%"
     }
 
 def generate_recommendations(metrics):
-    if metrics["Projected % of Target"] >= 100:
+    if metrics["Projected % of Target"].replace('%', '') >= "100":
         return "You're on track or exceeding your goal!"
     return f"You need to sell {metrics['Required Per Day']} units/day for {metrics['Days Left to Forecast']} days."
 
@@ -150,7 +153,9 @@ def plot_daily_bar_chart(df):
     return px.bar(daily, x='date', y='target', title="Daily Sales Trend")
 
 def generate_daily_table(forecast_df):
-    return forecast_df[['ds', 'yhat']].rename(columns={'ds': 'Date', 'yhat': 'Forecasted Sales'}).round(2)
+    df = forecast_df[['ds', 'yhat']].copy()
+    df['Forecasted Sales'] = df['yhat'].apply(lambda x: "{:,}".format(round(x)))
+    return df.rename(columns={'ds': 'Date'})[['Date', 'Forecasted Sales']]
 
 def get_forecast_explanation(method):
     explanations = {
