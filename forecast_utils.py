@@ -7,6 +7,7 @@ from numpy import polyfit
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from calendar import monthrange
 
+
 def preprocess_data(df, date_col, target_col, filters=[]):
     df = df[[date_col, target_col] + filters].copy()
     df.columns = ['date', 'target'] + filters
@@ -14,6 +15,7 @@ def preprocess_data(df, date_col, target_col, filters=[]):
     df['target'] = pd.to_numeric(df['target'], errors='coerce')
     df.dropna(subset=['date', 'target'], inplace=True)
     return df
+
 
 def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until='year_end', custom_days=None):
     df_grouped = df.groupby("date")["target"].sum().reset_index()
@@ -62,6 +64,7 @@ def forecast_sales(df, model_type, target_mode, event_dates=None, forecast_until
 
     return forecast, last_data_date, forecast_days, forecast_full
 
+
 def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_end', custom_days=None):
     df = df.copy()
     df.columns = df.columns.str.lower()
@@ -81,19 +84,16 @@ def forecast_by_region(df, model_type, event_dates=None, forecast_until='year_en
             region_forecasts.append({'Region': region, 'Forecasted_Volume': round(total, 2)})
 
     df_out = pd.DataFrame(region_forecasts)
+    if not df_out.empty:
+        df_out['Forecasted_Volume'] = df_out['Forecasted_Volume'].apply(lambda x: f"{x:,.2f}")
     return df_out.sort_values(by="Forecasted_Volume", ascending=False) if not df_out.empty else df_out
+
 
 def plot_region_contribution_pie(df):
     if 'Region' in df.columns and 'Forecasted_Volume' in df.columns and not df.empty:
         return px.pie(df, names='Region', values='Forecasted_Volume', title='Region-wise Forecasted Contribution')
     return go.Figure()
 
-#def plot_region_current_sales_pie(df):
-    #if 'region' in df.columns and 'date' in df.columns and 'target' in df.columns:
-        #region_sales = df.groupby('region')['target'].sum().reset_index()
-        #region_sales.columns = ['Region', 'Current_Sales']
-        #return px.pie(region_sales, names='Region', values='Current_Sales', title='Region-wise Current Sales Contribution')
-    #return go.Figure()
 
 def detect_pattern(df_grouped):
     df_grouped['rolling_mean'] = df_grouped['y'].rolling(window=7).mean()
@@ -104,6 +104,7 @@ def detect_pattern(df_grouped):
         return "Upward trend detected"
     else:
         return "Downward trend detected"
+
 
 def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     if mode == 'Monthly':
@@ -119,28 +120,31 @@ def calculate_target_analysis(df, forecast_df, last_date, target, mode):
     pct = round((total / target) * 100, 2)
 
     return {
-        "Target": target,
-        "Current Sales": round(current, 2),
-        "Forecasted Sales (Remaining)": round(forecast, 2),
-        "Total Projected": round(total, 2),
-        "Remaining to Hit Target": round(remaining, 2),
-        "Days Left to Forecast": days_left,
-        "Required Per Day": per_day,
-        "Projected % of Target": pct
+        "Target": f"{target:,.2f}",
+        "Current Sales": f"{current:,.2f}",
+        "Forecasted Sales (Remaining)": f"{forecast:,.2f}",
+        "Total Projected": f"{total:,.2f}",
+        "Remaining to Hit Target": f"{remaining:,.2f}",
+        "Days Left to Forecast": f"{days_left:,}",
+        "Required Per Day": f"{per_day:,.2f}",
+        "Projected % of Target": f"{pct:.2f}%"
     }
 
+
 def generate_recommendations(metrics):
-    if metrics["Projected % of Target"] >= 100:
+    if float(metrics["Projected % of Target"].replace('%','')) >= 100:
         return "You're on track or exceeding your goal!"
     return f"You need to sell {metrics['Required Per Day']} units/day for {metrics['Days Left to Forecast']} days."
+
 
 def plot_forecast(df):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat'], name='Forecast'))
     fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_upper'], name='Upper', line=dict(dash='dot')))
     fig.add_trace(go.Scatter(x=df['ds'], y=df['yhat_lower'], name='Lower', line=dict(dash='dot')))
-    fig.update_layout(title="Forecast with Confidence Bands", xaxis_title="Date", yaxis_title="Sales")
+    fig.update_layout(title="Forecast with Confidence Bands", xaxis_title="Date", yaxis_title="Sales", yaxis_tickformat=',')
     return fig
+
 
 def plot_actual_vs_forecast(df, forecast_df):
     actual = df.groupby('date')['target'].sum().reset_index()
@@ -149,15 +153,22 @@ def plot_actual_vs_forecast(df, forecast_df):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=merged['ds'], y=merged['yhat'], name='Forecast'))
     fig.add_trace(go.Scatter(x=merged['ds'], y=merged['y'], name='Actual'))
-    fig.update_layout(title='Actual vs Forecasted', xaxis_title='Date', yaxis_title='Sales')
+    fig.update_layout(title='Actual vs Forecasted', xaxis_title='Date', yaxis_title='Sales', yaxis_tickformat=',')
     return fig
+
 
 def plot_daily_bar_chart(df):
     daily = df.groupby('date')['target'].sum().reset_index()
-    return px.bar(daily, x='date', y='target', title="Daily Sales Trend")
+    fig = px.bar(daily, x='date', y='target', title="Daily Sales Trend")
+    fig.update_layout(yaxis_tickformat=',')
+    return fig
+
 
 def generate_daily_table(forecast_df):
-    return forecast_df[['ds', 'yhat']].rename(columns={'ds': 'Date', 'yhat': 'Forecasted Sales'}).round(2)
+    df = forecast_df[['ds', 'yhat']].rename(columns={'ds': 'Date', 'yhat': 'Forecasted Sales'})
+    df['Forecasted Sales'] = df['Forecasted Sales'].apply(lambda x: f"{x:,.2f}")
+    return df
+
 
 def get_forecast_explanation(method):
     explanations = {
