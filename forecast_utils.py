@@ -15,14 +15,14 @@ def calculate_target_analysis(df, target):
 
 def generate_daily_table(df):
     future_df = df[df['Date'] > pd.Timestamp.today()].copy()
-    future_df["Forecasted Sales"] = future_df["Sales"].apply(lambda x: "{:,}".format(int(round(x))))
+    future_df["Forecasted Sales"] = future_df["Sales"].apply(lambda x: "{:,}".format(round(x)))
     return future_df[["Date", "Forecasted Sales"]].reset_index(drop=True)
 
 def forecast_by_region(df):
     future_df = df[df['Date'] > pd.Timestamp.today()].copy()
     grouped = future_df.groupby("Region")["Sales"].sum().reset_index()
     grouped.rename(columns={"Sales": "Forecasted Sales"}, inplace=True)
-    grouped["Forecasted Sales"] = grouped["Forecasted Sales"].apply(lambda x: "{:,}".format(int(round(x))))
+    grouped["Forecasted Sales"] = grouped["Forecasted Sales"].apply(lambda x: "{:,}".format(round(x)))
     return grouped
 
 def generate_line_chart(df):
